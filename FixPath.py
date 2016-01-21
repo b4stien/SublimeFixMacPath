@@ -16,45 +16,72 @@ if isMac():
 	fixPathSettings = None
 	originalEnv = {}
 
-	def getSysPath():
-		command = "TERM=ansi CLICOLOR=\"\" SUBLIME=1 /usr/bin/login -fqpl $USER $SHELL -l -c 'TERM=ansi CLICOLOR=\"\" SUBLIME=1 printf \"%s\" \"$PATH\"'"
+
+	def getEnvVar(name):
+		global config
+
+		command = "TERM=ansi CLICOLOR=\"\" SUBLIME=1 /usr/bin/login -fqpl $USER $SHELL "
+
+		# If interactive shell
+		if ('interactive' not in config) or (config['interactive'] == True):
+			command += "-i "
+
+		command += "-l -c 'TERM=ansi CLICOLOR=\"\" SUBLIME=1 printf \"%s\" \"$" + name + "\"'"
 
 		# Execute command with original environ. Otherwise, our changes to the PATH propogate down to
 		# the shell we spawn, which re-adds the system path & returns it, leading to duplicate values.
-		sysPath = Popen(command, stdout=PIPE, shell=True, env=originalEnv).stdout.read()
+		var = Popen(command, stdout=PIPE, shell=True, env=originalEnv).stdout.read()
 
-		sysPathString = sysPath.decode("utf-8")
+		varString = var.decode("utf-8")
 		# Remove ANSI control characters (see: http://www.commandlinefu.com/commands/view/3584/remove-color-codes-special-characters-with-sed )
-		sysPathString = re.sub(r'\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]', '', sysPathString)
-		sysPathString = sysPathString.strip().rstrip(':')
+		varString = re.sub(r'\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]', '', varString)
+		varString = varString.strip().rstrip(':')
 
 		# Decode the byte array into a string, remove trailing whitespace, remove trailing ':'
-		return sysPathString
+		return varString
 
+
+	def fixEnvVar(name):
+		currVar = getEnvVar(name)
+
+		# Basic sanity check to make sure our new var is not empty
+		if len(currVar) > 0:
+			environ[name] = currVar
 
 
 	def fixPath():
-		currSysPath = getSysPath()
-		# Basic sanity check to make sure our new path is not empty
-		if len(currSysPath) < 1:
-			return False
+		global userPreferences
+		global config
 
-		environ['PATH'] = currSysPath
+		# Load config from User Preferences
+		config = userPreferences.get("fix_mac_path", {})
 
-		for pathItem in fixPathSettings.get("additional_path_items", []):
-			environ['PATH'] = pathItem + ':' + environ['PATH']
+		# Fix PATH by default
+		fixEnvVar("PATH")
+
+		# Fix other env vars provided in config
+		if 'env_vars' in config:
+			for envVar in config['env_vars']:
+				fixEnvVar(envVar)
+
+		# Append additional path items provided by user preferences
+		if 'additional_path_item' in config:
+			for pathItem in config['additional_path_item']:
+				environ['PATH'] = pathItem + ':' + environ['PATH']
 
 		return True
 
 
 	def plugin_loaded():
-		global fixPathSettings
-		fixPathSettings = sublime.load_settings("Preferences.sublime-settings")
-		fixPathSettings.clear_on_change('fixpath-reload')
-		fixPathSettings.add_on_change('fixpath-reload', fixPath)
+		global userPreferences
+
+		userPreferences = sublime.load_settings("Preferences.sublime-settings")
+		userPreferences.clear_on_change('fixpath-reload')
+		userPreferences.add_on_change('fixpath-reload', fixPath)
 
 		# Save the original environ (particularly the original PATH) to restore later
 		global originalEnv
+
 		for key in environ:
 			originalEnv[key] = environ[key]
 
@@ -66,8 +93,15 @@ if isMac():
 		# the PATH to be duplicated.
 		environ['PATH'] = originalEnv['PATH']
 
-		global fixPathSettings
-		fixPathSettings.clear_on_change('fixpath-reload')
+		# Reset other env vars
+		global config
+		if 'env_vars' in config:
+			for envVar in config['env_vars']:
+				if envVar in environ:
+					del environ[envVar]
+
+		global userPreferences
+		userPreferences.clear_on_change('fixpath-reload')
 
 
 	# Sublime Text 2 doesn't have loaded/unloaded handlers, so trigger startup code manually, first
