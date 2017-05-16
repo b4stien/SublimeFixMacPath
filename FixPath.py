@@ -20,13 +20,8 @@ if isMac():
 	def getEnvVar(name):
 		global config
 
-		command = "TERM=ansi CLICOLOR=\"\" SUBLIME=1 /usr/bin/login -fqpl $USER $SHELL "
-
-		# If interactive shell
-		if ('interactive' not in config) or (config['interactive'] == True):
-			command += "-i "
-
-		command += "-l -c 'TERM=ansi CLICOLOR=\"\" SUBLIME=1 printf \"%s\" \"$" + name + "\"'"
+		command = "env TERM=ansi CLICOLOR=\"\" SUBLIME=1 /usr/bin/login -fqpl $USER $SHELL -i "
+		command += "-l -c 'env TERM=ansi CLICOLOR=\"\" SUBLIME=1 printf \"%s\" \"$" + name + "\"'"
 
 		# Execute command with original environ. Otherwise, our changes to the PATH propogate down to
 		# the shell we spawn, which re-adds the system path & returns it, leading to duplicate values.
